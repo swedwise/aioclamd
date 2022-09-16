@@ -1,0 +1,43 @@
+name: Build and Test
+
+on:
+    push:
+        branches: [ main, develop ]
+    pull_request:
+        branches: [ main, develop ]
+
+jobs:
+    build_desktop:
+        name: "Build and test"
+        runs-on: ${{ matrix.os }}
+        services:
+            clamav:
+                image: clamav/clamav
+                ports:
+                    # Opens tcp port 6379 on the host and service container
+                    - 3310:3310
+        strategy:
+            matrix:
+                os: [ubuntu-latest]
+                python-version: ['3.7', '3.8', '3.9', '3.10']
+        steps:
+            -   uses: actions/checkout@v2
+            -   name: Set up Python ${{ matrix.python-version }}
+                uses: actions/setup-python@v4
+                id: py
+                with:
+                    python-version: ${{ matrix.python-version }}
+            -   name: Create virtual environment
+                run: pipx run poetry env use '${{ steps.py.outputs.python-path }}'
+            -   name: Install dependencies
+                run: pipx run poetry install --only main,test
+            -   name: Test with pytest
+                run: |
+                    pipx run poetry run pytest tests --junitxml=junit/test-results-${{ matrix.os }}-${{ matrix.python-version }}.xml --cov=com --cov-report=xml --cov-report=html
+            -   name: Upload pytest test results
+                uses: actions/upload-artifact@v1
+                with:
+                    name: pytest-results-${{ matrix.os }}-${{ matrix.python-version }}
+                    path: junit/test-results-${{ matrix.os }}-${{ matrix.python-version }}.xml
+                # Use always() to always run this step to publish test results when there are test failures
+                if: ${{ always() }}

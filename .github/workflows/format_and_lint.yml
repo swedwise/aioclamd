@@ -1,0 +1,22 @@
+name: Format and Lint
+
+on:
+    push:
+        branches: [ main, develop ]
+    pull_request:
+        branches: [ main, develop ]
+
+jobs:
+    format_and_lint:
+        name: "Format and lint"
+        runs-on: ubuntu-latest
+        steps:
+            -   uses: actions/checkout@v2
+            -   name: Set up Python
+                uses: actions/setup-python@v2
+            -   name: Install development dependencies
+                run: pipx run poetry install --only lint
+            -   name: Check code formatting with black
+                run: pipx run poetry run black . --check --diff
+            -   name: Lint with flake8
+                run: pipx run poetry run flake8 . --count --show-source --statistics
