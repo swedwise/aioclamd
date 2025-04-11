@@ -161,6 +161,7 @@ class ClamdAsyncClient:
             while chunk:
                 size = struct.pack(b"!L", len(chunk))
                 socket.writer.write(size + chunk)
+                await socket.writer.drain()
                 chunk = buffer.read(chunk_size)
 
             socket.writer.write(struct.pack(b"!L", 0))
