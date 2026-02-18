@@ -60,24 +60,33 @@ class _AsyncClamdNetworkSocket:
         self,
         host: str = "127.0.0.1",
         port: int = 3310,
+        timeout: float = None,
     ):
         """Initialize the _AsyncClamdNetworkSocket
 
         host (string) : hostname or ip address
         port (int) : TCP port
+        timeout (float or None) : socket timeout
         """
 
         self.host = host
         self.port = port
+        self.timeout = timeout
 
         self.reader: Union[asyncio.StreamReader, None] = None
         self.writer: Union[asyncio.StreamWriter, None] = None
 
     async def __aenter__(self):
         try:
-            self.reader, self.writer = await asyncio.open_connection(
-                self.host, self.port
-            )
+            if self.timeout:
+                self.reader, self.writer = await asyncio.wait_for(
+                    asyncio.open_connection(self.host, self.port),
+                    timeout=self.timeout
+                )
+            else:
+                self.reader, self.writer = await asyncio.open_connection(
+                    self.host, self.port
+                )
         except Exception as e:
             raise ClamdConnectionError(
                 f"Error connecting to {self.host}:{self.port}"
@@ -152,7 +161,7 @@ class ClamdAsyncClient:
           - ConnectionError: in case of communication problem
 
         """
-        async with _AsyncClamdNetworkSocket(self.host, self.port) as socket:
+        async with _AsyncClamdNetworkSocket(self.host, self.port, self.timeout) as socket:
             await socket.send_command("INSTREAM")
 
             # MUST be < StreamMaxLength in /etc/clamav/clamd.conf
@@ -186,7 +195,7 @@ class ClamdAsyncClient:
                      filename2: ('ERROR', 'reason')}
 
         """
-        async with _AsyncClamdNetworkSocket(self.host, self.port) as socket:
+        async with _AsyncClamdNetworkSocket(self.host, self.port, self.timeout) as socket:
             await socket.send_command(command, file)
             dr = {}
             response = await socket.recv_response()
@@ -200,20 +209,20 @@ class ClamdAsyncClient:
     # Convenience methods
 
     async def ping(self):
-        async with _AsyncClamdNetworkSocket(self.host, self.port) as socket:
+        async with _AsyncClamdNetworkSocket(self.host, self.port, self.timeout) as socket:
             return await socket.basic_command("PING")
 
     async def version(self):
-        async with _AsyncClamdNetworkSocket(self.host, self.port) as socket:
+        async with _AsyncClamdNetworkSocket(self.host, self.port, self.timeout) as socket:
             return await socket.basic_command("VERSION")
 
     async def reload(self):
-        async with _AsyncClamdNetworkSocket(self.host, self.port) as socket:
+        async with _AsyncClamdNetworkSocket(self.host, self.port, self.timeout) as socket:
             return await socket.basic_command("RELOAD")
 
     async def shutdown(self):
         """Force Clamd to shutdown and exit"""
-        async with _AsyncClamdNetworkSocket(self.host, self.port) as socket:
+        async with _AsyncClamdNetworkSocket(self.host, self.port, self.timeout) as socket:
             return await socket.basic_command("SHUTDOWN")
 
     async def scan(self, file):
