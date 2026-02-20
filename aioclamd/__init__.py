@@ -2,6 +2,7 @@ import asyncio
 import pkg_resources
 import re
 import struct
+from contextlib import suppress
 from typing import Union, BinaryIO
 
 try:
@@ -94,11 +95,17 @@ class _AsyncClamdNetworkSocket:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        try:
+        if self.writer is None:
+            return
+
+        if not self.writer.is_closing():
             self.writer.close()
+
+        with suppress(BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError, RuntimeError):
             await self.writer.wait_closed()
-        except Exception as e:  # noqa
-            pass
+
+        self.reader = None
+        self.writer = None
 
     async def basic_command(self, command):
         """
@@ -165,14 +172,16 @@ class ClamdAsyncClient:
             await socket.send_command("INSTREAM")
 
             # MUST be < StreamMaxLength in /etc/clamav/clamd.conf
-            chunk_size = 1024
-            chunk = buffer.read(chunk_size)
+            chunk_size = 64 * 1024
+            chunk = await asyncio.to_thread(buffer.read, chunk_size)
             while chunk:
                 size = struct.pack(b"!L", len(chunk))
                 socket.writer.write(size + chunk)
-                chunk = buffer.read(chunk_size)
+                await socket.writer.drain()
+                chunk = await asyncio.to_thread(buffer.read, chunk_size)
 
             socket.writer.write(struct.pack(b"!L", 0))
+            await socket.writer.drain()
 
             result = await socket.recv_response()
 
